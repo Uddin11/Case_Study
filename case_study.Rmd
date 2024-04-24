@@ -1,0 +1,415 @@
+---
+title: "Case_Study"
+author: "Shab Uddin"
+date: "2024-01-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+```{r}
+
+# Install DESeq2 package
+if (!requireNamespace("BiocManager", quietly = TRUE))
+  install.packages("BiocManager")
+BiocManager::install("limma")
+
+# Install and load required packages (if not already installed)
+install.packages(c("limma", "edgeR"))
+library(limma)
+library(edgeR)
+library(ggplot2)
+library(pheatmap)
+
+if (!requireNamespace("BiocManager"))
+    install.packages("BiocManager")
+BiocManager::install(c("limma", "edgeR", "Glimma", "org.Mm.eg.db", "gplots", "RColorBrewer", "NMF", "BiasedUrn"))
+
+
+install.packages("BiocManager")
+BiocManager::install("org.Hs.eg.db")
+
+
+library(RColorBrewer)
+install.packages("gplots")
+library(gplots)
+library(dendextend)
+
+
+
+```
+
+```{r}
+
+# Reading data for breast cancer from TCGA database 
+TCGA_BRCA <- read.table('TCGA_BRCA.txt', header = TRUE, sep = "\t", skip = 1, row.names = 1)
+
+# Convert the transposed data to a data frame
+bcount_data_breast <- as.data.frame(TCGA_BRCA)
+
+# Reading in data for healthy breast tissue
+GTEx_breast <- read.table('GTEx_Breast.txt', header = TRUE, sep = "\t", skip = 1, row.names = 1)
+GTEx_breast_count <- as.data.frame(GTEx_breast)
+
+# Add a small constant value to ensure non-negative counts
+bcount_data_breast <- bcount_data_breast + 1e-10
+GTEx_breast_count <- GTEx_breast_count + 1e-10
+
+
+# Merge datasets
+combined_data_breast <- cbind(bcount_data_breast, GTEx_breast_count)
+
+# Create DGEList objects
+DGE_combined <- DGEList(counts = combined_data_breast)
+
+
+
+#Check the number of rows in each dataset
+nrow_TCGA <- nrow(DGE_combined)
+
+
+# Define experimental conditions
+conditions <- factor(c(rep("cancer", ncol(bcount_data_breast)), rep("healthy", ncol(GTEx_breast_count))))
+
+# Assign conditions to DGEList object
+DGE_combined$samples$condition <- conditions
+
+
+
+# Identify common genes
+common_genes <- rownames(DGE_combined)
+
+
+# Create design matrix
+design <- model.matrix(~ conditions)
+
+# Perform limma-voom analysis
+fit <- lmFit(DGE_combined$counts, design) # convert to logCPM therefore do not need additional step to convert to logCPM
+fit <- lmFit(DGE_combined$counts, design)
+fit <- eBayes(fit)
+
+
+# Specify contrast coefficient and get results
+contrast_coefficient <- "conditionshealthy" 
+colnames(fit$coefficients)
+results <- topTable(fit, coef = contrast_coefficient, p.value = 0.001, adjust.method = "BH", number = Inf)
+head(results)
+head(fit$coefficients)
+
+# Clustering
+# Perform hierarchical clustering
+hc <- hclust(dist(t(DGE_combined$counts)))
+# Plot dendrogram
+plot(hc)
+
+# Cut dendrogram at height 100
+cluster_labels <- cutree(hc, h = 100)
+# Plot dendrogram with clusters colored
+dend <- as.dendrogram(hc)
+dend_colored <- color_branches(dend, k = length(unique(cluster_labels)))
+plot(dend_colored)
+
+
+# Start with a low value of h
+h_values <- seq(50, 200, by = 10)
+# Iterate over different h values
+for (h in h_values) {
+  cluster_labels <- cutree(hc, h = h)
+  num_clusters <- length(unique(cluster_labels))
+  cat("Number of clusters for h =", h, ":", num_clusters, "\n")
+}
+# Choose the best h value based on the number and interpretability of clusters
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Increase the size of the plot
+pdf("dendrogram_plot.pdf", width = 10, height = 8)
+# Plot dendrogram with adjusted parameters
+plot(hc, xlab = "Samples", ylab = "Height", main = "Dendrogram", cex = 0.8, hang = -1)
+# Rotate x-axis labels
+axis(side = 1, at = seq_along(cluster_labels), labels = cluster_labels, las = 2)
+dev.off()
+# Increase the size of the plot
+pdf("dendrogram_plot.pdf", width = 10, height = 8)
+# Plot dendrogram with adjusted parameters
+plot(hc, xlab = "Samples", ylab = "Height", main = "Dendrogram", cex = 0.8, hang = -1)
+# Rotate x-axis labels
+axis(side = 1, at = seq_along(cluster_labels), labels = cluster_labels, las = 2)
+dev.off()
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Estimate the variance for each row in the logcounts matrix
+var_genes <- apply(DGE_combined$counts, 1, var)
+# Get the gene names for the top 500 most variable genes
+select_var <- names(sort(var_genes, decreasing = TRUE))[1:50]
+# Subset logcounts matrix
+highly_variable_lcpm <- DGE_combined$counts[select_var,]
+# Define color palette
+mypalette <- brewer.pal(11, "RdYlBu")
+morecols <- colorRampPalette(mypalette)
+# Set up color vector for experimental conditions
+col.conditions <- c("red", "blue")[as.integer(DGE_combined$samples$condition)
+# Plot the heatmap
+heatmap.2(highly_variable_lcpm,
+          col = rev(morecols(50)),
+          trace = "none",
+          main = "Top 50 most variable genes across samples",
+          ColSideColors = col.conditions,
+          scale = "row")
+
+# Define color vector for experimental conditions
+col.conditions <- c("red", "blue")[as.integer(DGE_combined$samples$condition)]
+
+# Plot the heatmap
+heatmap.2(highly_variable_lcpm,
+          col = rev(morecols(50)),
+          trace = "none",
+          main = "Top 100 most variable genes across samples",
+          ColSideColors = col.conditions,
+          scale = "row")
+
+
+
+
+
+# Extract the coefficients for the "conditionshealthy" comparison
+coeff_conditionshealthy <- fit$coefficients[, "conditionshealthy"]
+# Perform GO analysis using the extracted coefficients
+go <- goana(coeff_conditionshealthy, species = "Hs")
+topGO(go, n=10)
+
+
+
+# Filter results for genes significantly differentially expressed in the cancer condition
+cancer_DEGs <- results[results$adj.P.Val < 0.05 & results$logFC > 1, ]
+# Exclude genes also differentially expressed in the healthy condition
+cancer_specific_DEGs <- cancer_DEGs[!row.names(cancer_DEGs) %in% row.names(results[results$conditionshealthy < 0.05 & results$conditionscancer > 0.05, ]), ]
+# Print cancer-specific DEGs
+print(cancer_specific_DEGs)
+
+#or this? 
+# Filter results for genes significantly differentially expressed in the cancer condition
+cancer_DEGs <- results[results$adj.P.Val < 0.05 & abs(results$logFC) > 1, ]
+# Exclude genes also differentially expressed in the healthy condition
+cancer_specific_DEGs <- cancer_DEGs[!row.names(cancer_DEGs) %in% row.names(results[results$conditionscancer < 0.05 & results$conditionshealthy > 0.05, ]), ]
+# Print cancer-specific DEGs
+print(cancer_specific_DEGs)
+
+
+
+# Rename duplicate column names to have unique names
+colnames(results) <- make.unique(colnames(results))
+
+# Display the first few entries in the dataframe
+head(results)
+# Load the required library
+library(org.Hs.eg.db)
+
+# Assuming your dataframe is named 'results' and the Ensembl gene IDs are in a column named 'id'
+ensembl_gene_ids <- results$id
+
+# Check if there are any NA values in the 'id' column
+ensembl_gene_ids <- ensembl_gene_ids[!is.na(ensembl_gene_ids)]
+
+# Convert Ensembl gene IDs to gene names only if there are valid IDs
+if (length(ensembl_gene_ids) > 1) {
+  # Concatenate all Ensembl gene IDs into a single vector
+  all_ensembl_gene_ids <- unlist(ensembl_gene_ids)
+
+  # Convert Ensembl gene IDs to gene names
+  gene_names <- mapIds(org.Hs.eg.db, keys = all_ensembl_gene_ids, keytype = "ENSEMBL", column = "SYMBOL")
+
+  # Print the resulting gene names
+  print(gene_names)
+} else {
+  print("No valid Ensembl gene IDs found.")
+}
+
+
+# convert ENS to GeneID for volcano plot
+# Load the required library
+library(org.Hs.eg.db)
+# Assuming your dataframe is named 'data' and the Ensembl gene IDs are in a column named 'ensembl_gene_id'
+ensembl_gene_ids <- results$id
+# Concatenate all Ensembl gene IDs into a single vector
+all_ensembl_gene_ids <- unlist(ensembl_gene_ids)
+# Remove any NA values
+all_ensembl_gene_ids <- all_ensembl_gene_ids[!is.na(all_ensembl_gene_ids)]
+# Convert Ensembl gene IDs to gene names
+ensembl_gene_ids <- as.character(results[, 1])
+# Check the format of Ensembl gene IDs
+head(ensembl_gene_ids)
+# Use keys() function to see valid keys for "ENSEMBL" keytype
+keys(org.Hs.eg.db, keytype = "ENSEMBL")
+# Assuming you have already loaded the org.Hs.eg.db package and have access to the relevant database
+# Convert Ensembl gene IDs to gene names
+gene_names <- mapIds(org.Hs.eg.db, keys = ensembl_gene_ids, keytype = "ENSEMBL", column = "SYMBOL")
+# Print the resulting gene names
+print(gene_names)
+install.packages("BiocManager", repos = "https://cloud.r-project.org")
+BiocManager::install("org.Hs.eg.db")
+# Retrieve gene symbols based on Ensembl gene IDs
+# Convert the first column of results to a character vector
+gene_ids <- as.character(results[, 1])
+# Retrieve gene symbols based on Ensembl gene IDs
+results$ensembl_gene_id <- gene_symbols$SYMBOL
+# Assuming 'results' is your data frame containing DEG information
+volcano_plot <- ggplot(results, aes(x = logFC, y = -log10(adj.P.Val))) +
+  geom_point(aes(color = ifelse(adj.P.Val < 0.05, "Significant", "Not Significant")), alpha = 0.6) +
+  scale_color_manual(values = c("Significant" = "red", "Not Significant" = "black")) +
+  geom_text_repel(aes(label = GeneSymbol), size = 3, vjust = 0) +  # Add gene symbols as labels
+  labs(title = "Volcano Plot of Cancer DEGs", x = "Log2 Fold Change", y = "-log10(Adjusted p-value)")
+print(volcano_plot)
+
+
+
+
+
+
+
+
+
+# Create volcano plot
+volcano_plot <- ggplot(cancer_DEGs, aes(x = logFC, y = -log10(adj.P.Val))) +
+  geom_point(aes(color = ifelse(adj.P.Val < 0.05, "Significant", "Not Significant")), alpha = 0.6) +
+  scale_color_manual(values = c("Significant" = "red", "Not Significant" = "black")) +
+  labs(title = "Volcano Plot of Cancer DEGs", x = "Log2 Fold Change", y = "-log10(Adjusted p-value)") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+print(volcano_plot)
+
+
+
+# Extract the top differentially expressed genes
+top_genes <- head(results, 20)  # Adjust the number as needed 
+# Create a bar plot with spaced out x-axis labels
+ggplot(top_genes, aes(x = reorder(rownames(top_genes), logFC), y = logFC, fill = ifelse(P.Value < 0.05, "Significant", "Not Significant"))) +
+  geom_bar(stat = "identity") +
+  coord_flip() +
+  labs(title = "Top Differentially Expressed Genes", x = "Gene", y = "Log2 Fold Change") +
+  scale_fill_manual(values = c("Significant" = "red", "Not Significant" = "gray")) +
+  theme_minimal() +
+  theme(axis.text.y = element_text(size = 6))  # Adjust the size of y-axis labels
+
+
+
+
+
+
+
+
+
+
+
+
+# Plot top differentially expressed genes # not working?
+plotMD(results, column = "logFC", status = results$P.Value < 0.05, NA=  FALSE, min = 1, max = 1)
+plotMD(results, column = "logFC", status = results$P.Value < 0.05, xlim = c(-10, 10))
+valid_results <- results[!is.na(results$logFC), ]
+plotMD(valid_results, column = "logFC", status = valid_results$P.Value < 0.05, xlim = c(-10, 10))
+valid_results <- results[!is.na(results$logFC), ]
+plotMD(valid_results, column = "logFC", status = valid_results$P.Value < 0.05, xlim = c(-10, 10), ylim = c(-10, 10))
+valid_results <- valid_results[complete.cases(valid_results$logFC), ]
+plotMD(valid_results, column = "logFC", status = valid_results$P.Value < 0.05, xlim = c(-10, 10), ylim = c(-10, 10))
+
+
+
+# QQplot
+qqt(fit$t, df=fit$df.prior+fit$df.residual,pch=16, cex=0.2)
+abline(0,1)
+options(digits=3)
+topTable(fit,number=30)
+
+
+
+# Boxplot of log-fold changes
+ggplot(data = results, aes(x = "", y = logFC)) +
+  geom_boxplot(fill = "lightblue", color = "blue") +
+  labs(title = "Distribution of Log-Fold Changes", y = "Log-Fold Change") +
+  theme_minimal()
+
+
+
+
+# Check the class of data
+class(combined_data_breast)
+# Convert the data to numeric if necessary
+combined_data_breast <- as.matrix(combined_data_breast)
+# Apply the log transformation
+log_counts <- log2(combined_data_breast + 1)  # Add 1 to avoid log(0)
+pheatmap(log_counts, cluster_rows = TRUE, cluster_cols = TRUE)
+
+
+
+# Filter DEGs (may need to adjust the threshold)
+DEGs <- results[results$adj.P.Val < 0.05, ]  # Adjust the threshold as needed
+# Extract precision weights for DEGs
+DEG_names <- rownames(DEGs)
+precision_weights_DEGs <- fit$sigma[DEG_names]^2  # Assuming 'fit' is your limma fit object
+# Plot precision weights for DEGs
+boxplot(precision_weights_DEGs, main = "Precision Weights Distribution for DEGs",
+        xlab = "DEGs", ylab = "Precision Weight")
+
+
+
+
+
+# Test this # not working 
+fit <- lmFit(y,design,block=targets$Donor,correlation=dupcor$consensus.correlation)
+contrasts <- makeContrasts(ML-MS, LP-MS, ML-LP, levels=design)
+fit2 <- contrasts.fit(fit, contrasts)
+fit2 <- eBayes(fit2, trend=TRUE)
+summary(decideTests(fit2, method="global"))
+
+
+# Test this 
+# Set the number of top DEGs you want to visualize for top cancer DEGs
+num_top_genes <- 20  # Adjust as needed
+# Sort results by adjusted p-value and select top genes
+top_genes <- head(results[order(results$adj.P.Val), ], num_top_genes)
+# Extract precision weights for top DEGs
+top_gene_names <- rownames(top_genes)
+precision_weights_top_genes <- fit$sigma[top_gene_names]^2
+# Plot precision weights for top DEGs
+boxplot(precision_weights_top_genes, main = "Precision Weights Distribution for Top DEGs",
+        xlab = "Top DEGs", ylab = "Precision Weight")
+
+
+
+# Gene Ontology analysis - adjust the code if needed and need to test this 
+g <- goana(fit, coef=4, species="Rn", geneid="EntrezID")
+topGO(g,n=20,truncate="50")
+
+
+
+```
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
